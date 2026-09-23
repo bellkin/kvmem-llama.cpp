@@ -33,3 +33,11 @@ git -C llama.cpp archive 7fe450e19305b828c199d602c23a8337aaa1f03b | tar -x -C /t
 KVMEM_LLAMA_DIR=/tmp/kvmem-llama-patch-check scripts/apply-patches.sh
 KVMEM_LLAMA_DIR=/tmp/kvmem-llama-patch-check scripts/apply-patches.sh
 ```
+
+`0005-qwen35-mtp-hadamard-inverse.patch` fixes the qwen35 MTP graph, which
+performs its own `token_embd` lookup and therefore has to apply the same
+Hadamard inverse transform the main graph applies in
+`llm_graph_context::build_inp_embd()`. Without it PrismML ternary models are
+rejected by `llama_verify_hadamard_graph` as soon as `--spec-type draft-mtp` is
+used. `scripts/apply-patches.sh` applies it automatically after the cumulative
+KVMem patch.

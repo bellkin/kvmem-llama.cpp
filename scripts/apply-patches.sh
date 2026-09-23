@@ -56,3 +56,20 @@ else
     git apply --ignore-space-change "$RDNA2_FATTN"
     echo "applied RDNA2 quantized-KV Flash Attention patch"
 fi
+
+# Optional follow-up: qwen35 MTP Hadamard inverse.
+# PrismML ternary weights store token_embd in a Hadamard-rotated basis; the MTP
+# graph has its own embedding lookup and must undo the rotation, otherwise
+# llama_verify_hadamard_graph rejects the context as soon as
+# --spec-type draft-mtp is used.
+HADAMARD="$ROOT/patches/0005-qwen35-mtp-hadamard-inverse.patch"
+if [[ -f "$HADAMARD" ]]; then
+    if git apply --reverse --check "$HADAMARD" 2>/dev/null; then
+        echo "qwen35 MTP Hadamard patch already applied"
+    elif git apply --check "$HADAMARD" 2>/dev/null; then
+        git apply "$HADAMARD"
+        echo "applied qwen35 MTP Hadamard patch"
+    else
+        echo "warning: $HADAMARD does not apply cleanly; --spec-type draft-mtp will fail" >&2
+    fi
+fi
