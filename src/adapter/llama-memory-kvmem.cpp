@@ -2963,8 +2963,8 @@ bool llama_memory_kvmem::d2h_submit(ggml_backend_t be) {
             d2h_->snap_be = ggml_backend_event_new(dev);
         }
     }
-    const bool old_sync = kvmem_harvest_sync_old() || !be || !d2h_->compute_done ||
-            !kvmem_ggml_cuda_event(d2h_->compute_done);
+    const bool old_sync = kvmem_harvest_sync_old() || !be || !be->iface.event_record ||
+            !d2h_->compute_done || !kvmem_ggml_cuda_event(d2h_->compute_done);
     {
         const int64_t t_sync = ggml_time_us();
         if (old_sync) {
