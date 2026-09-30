@@ -149,6 +149,7 @@ static void print_usage(const char * argv0) {
             "  --spec-kv-dtype TYPE       MTP K/V type (default f16)\n"
             "  --spec-draft-n-max N       MTP draft tokens (default 3)\n"
             "  --spec-draft-p-min P       min draft probability (default 0)\n"
+            "  --spec-draft-model PATH    MTP sidecar GGUF; empty = welded nextn (default)\n"
             "  --jinja                    native Jinja rendering (always enabled)\n"
             "  --chat-template TEMPLATE   override model chat template (Jinja text)\n"
             "  --chat-template-file PATH  load a Jinja template file\n"
@@ -325,6 +326,7 @@ struct ServerState {
     bool spec_mtp = false;
     int spec_n_max = 3;
     float spec_p_min = 0.0f;
+    std::string spec_draft_model;
     bool enable_thinking_default = false;
     std::map<std::string, std::string> template_kwargs;
     int reasoning_budget_default = -1;
@@ -2460,6 +2462,8 @@ int main(int argc, char ** argv) {
             st.spec_n_max = kvmem_cli_int(arg, need(arg));
         } else if (eq(arg, "--spec-draft-p-min")) {
             st.spec_p_min = static_cast<float>(kvmem_cli_real(arg, need(arg), 0, 1));
+        } else if (eq(arg, "--spec-draft-model") || eq(arg, "-md")) {
+            st.spec_draft_model = need(arg);
         } else if (eq(arg, "--jinja")) {
             // Native Jinja rendering is always enabled in this server.
         } else if (eq(arg, "--no-jinja")) {
@@ -2646,6 +2650,10 @@ int main(int argc, char ** argv) {
         fprintf(stderr, "KVMEM_STARTUP_ERROR multi-GPU MTP requires --kvmem and explicit --kvmem-mtp-state snapshots|replay (auto is not supported yet)\n");
         return 1;
     }
+    if (device_config.devices.size() > 2 && st.spec_mtp && !st.spec_draft_model.empty()) {
+        fprintf(stderr, "KVMEM_STARTUP_ERROR multi-GPU MTP currently requires an embedded nextn draft layer\n");
+        return 1;
+    }
     // Check resources before spending time/VRAM on loading model weights.
     auto readable = [](const std::string & path) {
         std::error_code ec;
@@ -2675,6 +2683,7 @@ int main(int argc, char ** argv) {
         {"kvmem", {{"enabled", st.kparams.enabled}, {"budget", st.kparams.budget}, {"gen_reserve", st.kparams.gen_reserve},
                    {"sink_tokens", st.kparams.sink_tokens}, {"block_tokens", st.kparams.block_tokens}}},
         {"spec_type", st.spec_mtp ? "draft-mtp" : "none"},
+        {"spec_draft_model", st.spec_draft_model},
         {"vision", {{"enabled", !mmproj_path.empty()}, {"projector", mmproj_path}, {"gpu", mmproj_gpu},
                     {"device", mmproj_gpu ? (mmproj_device_name.empty() ? "auto" : mmproj_device_name) : "CPU"}}},
         {"http", {{"host", host}, {"port", port}, {"timeout", options.timeout}, {"slots", 1}}},
@@ -2733,6 +2742,7 @@ int main(int argc, char ** argv) {
         sopts.n_threads_batch = options.threads_batch > 0 ? options.threads_batch : options.threads;
         if (options.flash_attn_set) sopts.flash_attn = options.flash_attn;
         sopts.kvmem_enabled = st.kparams.enabled;
+        sopts.draft_model = st.spec_draft_model;
         sopts.type_k = st.cache_type_k;
         sopts.type_v = st.cache_type_v;
         sopts.draft_type = st.spec_cache_type;
