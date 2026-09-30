@@ -25,6 +25,7 @@ struct kvmem_spec_opts {
     llama_flash_attn_type flash_attn = LLAMA_FLASH_ATTN_TYPE_AUTO;
     bool    kvmem_enabled = false;
     std::string draft_model; // optional sidecar GGUF; empty = welded nextn
+    std::vector<ggml_backend_dev_t> draft_devices; // optional; empty = default device selection
     ggml_type type_k = GGML_TYPE_Q8_0;
     ggml_type type_v = GGML_TYPE_Q8_0;
     ggml_type draft_type = GGML_TYPE_COUNT; // inherit target K/V types unless overridden

@@ -150,6 +150,7 @@ static void print_usage(const char * argv0) {
             "  --spec-draft-n-max N       MTP draft tokens (default 3)\n"
             "  --spec-draft-p-min P       min draft probability (default 0)\n"
             "  --spec-draft-model PATH    MTP sidecar GGUF; empty = welded nextn (default)\n"
+            "  --spec-draft-device NAMES  draft devices, e.g. Vulkan1 (default: main --device)\n"
             "  --jinja                    native Jinja rendering (always enabled)\n"
             "  --chat-template TEMPLATE   override model chat template (Jinja text)\n"
             "  --chat-template-file PATH  load a Jinja template file\n"
@@ -327,6 +328,7 @@ struct ServerState {
     int spec_n_max = 3;
     float spec_p_min = 0.0f;
     std::string spec_draft_model;
+    std::string spec_draft_device_names;
     bool enable_thinking_default = false;
     std::map<std::string, std::string> template_kwargs;
     int reasoning_budget_default = -1;
@@ -2464,6 +2466,8 @@ int main(int argc, char ** argv) {
             st.spec_p_min = static_cast<float>(kvmem_cli_real(arg, need(arg), 0, 1));
         } else if (eq(arg, "--spec-draft-model") || eq(arg, "-md")) {
             st.spec_draft_model = need(arg);
+        } else if (eq(arg, "--spec-draft-device")) {
+            st.spec_draft_device_names = need(arg);
         } else if (eq(arg, "--jinja")) {
             // Native Jinja rendering is always enabled in this server.
         } else if (eq(arg, "--no-jinja")) {
@@ -2684,6 +2688,7 @@ int main(int argc, char ** argv) {
                    {"sink_tokens", st.kparams.sink_tokens}, {"block_tokens", st.kparams.block_tokens}}},
         {"spec_type", st.spec_mtp ? "draft-mtp" : "none"},
         {"spec_draft_model", st.spec_draft_model},
+        {"spec_draft_device", st.spec_draft_device_names},
         {"vision", {{"enabled", !mmproj_path.empty()}, {"projector", mmproj_path}, {"gpu", mmproj_gpu},
                     {"device", mmproj_gpu ? (mmproj_device_name.empty() ? "auto" : mmproj_device_name) : "CPU"}}},
         {"http", {{"host", host}, {"port", port}, {"timeout", options.timeout}, {"slots", 1}}},
@@ -2743,6 +2748,25 @@ int main(int argc, char ** argv) {
         if (options.flash_attn_set) sopts.flash_attn = options.flash_attn;
         sopts.kvmem_enabled = st.kparams.enabled;
         sopts.draft_model = st.spec_draft_model;
+        if (!st.spec_draft_device_names.empty()) {
+            size_t start = 0;
+            while (start <= st.spec_draft_device_names.size()) {
+                const auto end = st.spec_draft_device_names.find(',', start);
+                const auto name = st.spec_draft_device_names.substr(start, end == std::string::npos ? end : end - start);
+                auto * dev = ggml_backend_dev_by_name(name.c_str());
+                if (!dev || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU) {
+                    fprintf(stderr, "KVMEM_STARTUP_ERROR invalid --spec-draft-device: %s; see --list-devices\n", name.c_str());
+                    return 1;
+                }
+                if (std::find(sopts.draft_devices.begin(), sopts.draft_devices.end(), dev) != sopts.draft_devices.end()) {
+                    fprintf(stderr, "KVMEM_STARTUP_ERROR --spec-draft-device contains a duplicate device: %s\n", name.c_str());
+                    return 1;
+                }
+                sopts.draft_devices.push_back(dev);
+                if (end == std::string::npos) break;
+                start = end + 1;
+            }
+        }
         sopts.type_k = st.cache_type_k;
         sopts.type_v = st.cache_type_v;
         sopts.draft_type = st.spec_cache_type;

@@ -16,6 +16,8 @@
 #include "ggml-backend.h"
 #include "ggml-backend-impl.h"
 
+#include <ggml-cuda.h>
+
 #include <cuda_runtime.h>
 
 #include <algorithm>
@@ -32,6 +34,13 @@ static uint8_t * kvmem_mtp_cuda_ptr(ggml_tensor * t) {
     }
     ggml_backend_buffer_t buf = t->view_src ? t->view_src->buffer : t->buffer;
     if (!buf || ggml_backend_buffer_is_host(buf) || ggml_backend_buffer_is_meta(buf)) {
+        return nullptr;
+    }
+    // raw pointers are only valid for CUDA buffers; Vulkan (or other GPU)
+    // allocations must take the host-K fallback instead of cudaMemcpy
+    ggml_backend_dev_t dev = ggml_backend_buft_get_device(ggml_backend_buffer_get_type(buf));
+    if (!dev || ggml_backend_dev_type(dev) != GGML_BACKEND_DEVICE_TYPE_GPU ||
+            std::strcmp(ggml_backend_reg_name(ggml_backend_dev_backend_reg(dev)), GGML_CUDA_NAME) != 0) {
         return nullptr;
     }
     return static_cast<uint8_t *>(t->data);

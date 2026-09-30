@@ -101,6 +101,13 @@ bool kvmem_spec_start(kvmem_spec_session & sess,
     p.speculative.draft.cache_type_v = opts.draft_type == GGML_TYPE_COUNT ? opts.type_v : opts.draft_type;
 
     common_params p_dft = common_base_params_to_speculative(p);
+    if (!opts.draft_devices.empty()) {
+        p_dft.devices = opts.draft_devices;
+        p_dft.devices.push_back(nullptr); // llama expects a null-terminated device list
+        std::string names;
+        for (size_t i = 0; i + 1 < p_dft.devices.size(); ++i) { names += ggml_backend_dev_name(p_dft.devices[i]); names += " "; }
+        kvmem_diag("KVMEM_TRACE draft_devices=%s\n", names.c_str());
+    }
     sess.init = common_speculative_init_from_params(p_dft, model_tgt, ctx_tgt);
     sess.ctx_dft = sess.init ? sess.init->context() : nullptr;
     if (!sess.ctx_dft) {

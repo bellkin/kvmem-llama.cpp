@@ -58,7 +58,8 @@ static void print_usage(const char * argv0) {
             "  --spec-draft-n-max N       MTP draft tokens (default 2)\n"
             "  --spec-draft-p-min P       min draft probability (default 0)\n"
             "  --kvmem-mtp-state MODE     snapshots | replay (default snapshots)\n"
-            "  --spec-draft-model PATH    optional sidecar MTP GGUF\n",
+            "  --spec-draft-model PATH    optional sidecar MTP GGUF\n"
+            "  --spec-draft-device NAMES  draft devices, e.g. Vulkan1 (default: main --device)\n",
             argv0);
 }
 
@@ -102,6 +103,7 @@ int main(int argc, char ** argv) {
     int spec_n_max = 2;
     float spec_p_min = 0.0f;
     std::string spec_draft_model;
+    std::string spec_draft_device_names;
 
     int i = 1;
     for (; i < argc; ++i) {
@@ -242,6 +244,8 @@ int main(int argc, char ** argv) {
             }
         } else if (eq(arg, "--spec-draft-model") || eq(arg, "-md")) {
             spec_draft_model = need(arg);
+        } else if (eq(arg, "--spec-draft-device")) {
+            spec_draft_device_names = need(arg);
         } else if (arg[0] == '-') {
             fprintf(stderr, "unknown flag: %s\n", arg);
             print_usage(argv[0]);
@@ -436,6 +440,25 @@ int main(int argc, char ** argv) {
         sopts.type_k = cache_type_k;
         sopts.type_v = cache_type_v;
         sopts.draft_type = spec_cache_type;
+        if (!spec_draft_device_names.empty()) {
+            size_t start = 0;
+            while (start <= spec_draft_device_names.size()) {
+                const auto end = spec_draft_device_names.find(',', start);
+                const auto name = spec_draft_device_names.substr(start, end == std::string::npos ? end : end - start);
+                auto * dev = ggml_backend_dev_by_name(name.c_str());
+                if (!dev || ggml_backend_dev_type(dev) == GGML_BACKEND_DEVICE_TYPE_CPU) {
+                    fprintf(stderr, "invalid --spec-draft-device: %s; see --list-devices\n", name.c_str());
+                    return 1;
+                }
+                if (std::find(sopts.draft_devices.begin(), sopts.draft_devices.end(), dev) != sopts.draft_devices.end()) {
+                    fprintf(stderr, "--spec-draft-device contains a duplicate device: %s\n", name.c_str());
+                    return 1;
+                }
+                sopts.draft_devices.push_back(dev);
+                if (end == std::string::npos) break;
+                start = end + 1;
+            }
+        }
         if (!kvmem_spec_start(spec_sess, model, ctx, sopts)) {
             return 1;
         }
